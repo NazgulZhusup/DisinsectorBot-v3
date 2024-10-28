@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Авторизация администратора</title>
+    <!-- Ваши стили -->
+</head>
+<body>
+    <h1>Авторизация администратора</h1>
+    <form method="POST" action="{{ url_for('auth.admin_login') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label for="email">Email:</label>
+        <input type="email" name="email" id="email" required>
+        <label for="password">Пароль:</label>
+        <input type="password" name="password" id="password" required>
+        <button type="submit">Войти</button>
+    </form>
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <div class="message">
+                {% for message in messages %}
+                    <p>{{ message }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+    <p><a href="{{ url_for('main.index') }}">Назад</a></p>
+</body>
+</html>

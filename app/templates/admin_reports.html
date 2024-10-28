@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Отчеты по заявкам</title>
+    <style>
+        /* Ваши стили */
+    </style>
+</head>
+<body>
+    <h1>Отчеты по заявкам</h1>
+    <table>
+        <tr>
+            <th>Дезинсектор</th>
+            <th>Всего заявок</th>
+            <th>Выполнено</th>
+            <th>В процессе</th>
+            <th>Новые</th>
+        </tr>
+        {% for disinsector in disinsectors %}
+        <tr>
+            <td>{{ disinsector.name }}</td>
+            <td>{{ disinsector.orders|length }}</td>
+            <td>{{ disinsector.orders|selectattr('order_status', 'equalto', 'Выполнено')|list|length }}</td>
+            <td>{{ disinsector.orders|selectattr('order_status', 'equalto', 'В процессе')|list|length }}</td>
+            <td>{{ disinsector.orders|selectattr('order_status', 'equalto', 'Новая')|list|length }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    <br>
+    <a href="{{ url_for('main.admin_dashboard') }}">Назад к панели администратора</a>
+</body>
+</html>

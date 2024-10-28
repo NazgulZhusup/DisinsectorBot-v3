@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Добро пожаловать на сервис Entoforce!</title>
+    <style>
+        /* Ваши стили */
+    </style>
+</head>
+<body>
+    <h1>Добро пожаловать на сервис Entoforce!</h1>
+    <p>
+        <a href="{{ url_for('auth.disinsector_login') }}">Вход для дезинсектора</a>
+    </p>
+    <p>
+        <a href="{{ url_for('auth.admin_login') }}">Вход для администратора</a>
+    </p>
+</body>
+</html>

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Вход для дезинсектора</title>
+    <!-- Ваши стили -->
+</head>
+<body>
+    <h1>Вход для дезинсектора</h1>
+    <form method="POST" action="{{ url_for('auth.disinsector_login') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label for="token">Токен:</label>
+        <input type="text" name="token" id="token" required>
+        <button type="submit">Войти</button>
+    </form>
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <div class="message">
+                {% for message in messages %}
+                    <p>{{ message }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+    <p><a href="{{ url_for('main.index') }}">На главную</a></p>
+</body>
+</html>
