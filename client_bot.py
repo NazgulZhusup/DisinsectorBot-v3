@@ -125,10 +125,8 @@ async def process_address(message: types.Message, state: FSMContext):
             return
         await state.update_data(address=address)
 
-        # Получаем все данные из состояния
         user_data = await state.get_data()
 
-        # Преобразуем имена полей в соответствии с ожиданиями сервера
         payload = {
             'client_name': user_data['name'],
             'object_type': user_data['object_type'],
@@ -145,7 +143,6 @@ async def process_address(message: types.Message, state: FSMContext):
             'Accept': 'application/json',
         }
 
-        # Отправка данных на сервер
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.post('http://127.0.0.1:5000/api/create_order', json=payload, headers=headers) as response:

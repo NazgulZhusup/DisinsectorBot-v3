@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import db
 from app.model import Admin, Disinsector
+from app.forms import RegisterDisinsectorForm
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -52,11 +53,12 @@ def admin_login():
 @auth_bp.route('/register_disinsector', methods=['GET', 'POST'])
 def register_disinsector():
     if 'user_id' in session and session.get('role') == 'admin':
-        if request.method == 'POST':
-            name = request.form['name']
-            email = request.form['email']
-            password = generate_password_hash(request.form['password'])
-            token = request.form['token']
+        form = RegisterDisinsectorForm()
+        if form.validate_on_submit():
+            name = form.name.data
+            email = form.email.data
+            password = generate_password_hash(form.password.data)
+            token = form.token.data
 
             # Проверяем, есть ли уже дезинсектор с таким email
             existing_disinsector = Disinsector.query.filter_by(email=email).first()
@@ -70,11 +72,9 @@ def register_disinsector():
             flash(f"Дезинсектор {name} успешно зарегистрирован!")
             return redirect(url_for('main.admin_dashboard'))
 
-        return render_template('register_disinsector.html')
+        return render_template('register_disinsector.html', form=form)
     else:
         return redirect(url_for('auth.admin_login'))
-
-
 # Вход для дезинсектора
 @auth_bp.route('/disinsector/login', methods=['GET', 'POST'])
 def disinsector_login():

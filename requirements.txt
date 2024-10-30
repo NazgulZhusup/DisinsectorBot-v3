@@ -1,0 +1,11 @@
+Flask
+Flask-WTF
+Flask-SQLAlchemy
+Flask-Migrate
+aiogram
+SQLAlchemy
+requests
+aiohttp
+python-dotenv
+werkzeug
+email_validator

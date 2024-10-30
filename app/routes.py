@@ -2,34 +2,36 @@ from flask import Blueprint, render_template, redirect, url_for, session, flash,
 from app import db, csrf
 from app.model import Order, Client, Disinsector
 
-
-
 main_bp = Blueprint('main', __name__)
-
 
 @main_bp.route('/')
 def index():
     return render_template('index.html')
 
-
-@main_bp.route('/admin/dashboard')
+@main_bp.route('/admin/dashboard', methods=['GET'])
 def admin_dashboard():
     if 'user_id' in session and session.get('role') == 'admin':
-        orders = Order.query.all()
+        status = request.args.get('status', 'Все')
+        if status == 'Все':
+            orders = Order.query.all()
+        else:
+            orders = Order.query.filter_by(order_status=status).all()
         return render_template('admin_dashboard.html', orders=orders)
     else:
         return redirect(url_for('auth.admin_login'))
-
 
 @main_bp.route('/disinsector/dashboard')
 def disinsector_dashboard():
     if 'user_id' in session and session.get('role') == 'disinsector':
         disinsector_id = session['user_id']
+        disinsector = Disinsector.query.get(disinsector_id)
+        if not disinsector:
+            flash("Дезинсектор не найден.")
+            return redirect(url_for('auth.disinsector_login'))
         orders = Order.query.filter_by(disinsector_id=disinsector_id).all()
-        return render_template('disinsector_dashboard.html', orders=orders)
+        return render_template('disinsector_dashboard.html', disinsector=disinsector, orders=orders)
     else:
         return redirect(url_for('auth.disinsector_login'))
-
 
 @csrf.exempt
 @main_bp.route('/api/create_order', methods=['POST'])
@@ -38,7 +40,7 @@ def create_order():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    # Извлекаем необходимые поля из data
+    # Extract fields
     client_name = data.get('client_name')
     object_type = data.get('object_type')
     insect_quantity = data.get('insect_quantity')
@@ -46,21 +48,21 @@ def create_order():
     phone_number = data.get('phone_number')
     address = data.get('address')
 
-    # Проверяем, что все необходимые поля присутствуют
+    # Check required fields
     if not all([client_name, object_type, insect_quantity, disinsect_experience, phone_number, address]):
         return jsonify({'error': 'Missing required fields'}), 400
 
-    # Конвертируем disinsect_experience в Boolean
+    # Convert disinsect_experience to Boolean
     disinsect_experience_bool = True if disinsect_experience == 'yes' else False
 
-    # Ищем или создаем клиента
+    # Find or create client
     client = Client.query.filter_by(phone=phone_number).first()
     if not client:
         client = Client(name=client_name, phone=phone_number, address=address)
         db.session.add(client)
         db.session.commit()
 
-    # Создаем новый заказ
+    # Create new order
     new_order = Order(
         client_id=client.id,
         object_type=object_type,
@@ -71,15 +73,20 @@ def create_order():
     db.session.add(new_order)
     db.session.commit()
 
-    # Здесь вы можете уведомить дезинсекторов о новом заказе
+    # Notify disinfectors about new order
+    # (Assuming functionality exists elsewhere)
 
     return jsonify({'status': 'success'}), 200
 
 @main_bp.route('/update_order_status', methods=['POST'])
 def update_order_status():
     if 'user_id' in session and session.get('role') == 'disinsector':
-        order_id = request.form['order_id']
-        new_status = request.form['new_status']
+        order_id = request.form.get('order_id')
+        new_status = request.form.get('new_status')
+
+        if not order_id or not new_status:
+            flash("Неверные данные.")
+            return redirect(url_for('main.disinsector_dashboard'))
 
         order = Order.query.get(order_id)
         if order:
@@ -93,4 +100,3 @@ def update_order_status():
     else:
         flash("Неавторизованный доступ.")
         return redirect(url_for('auth.disinsector_login'))
-

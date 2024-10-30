@@ -1,0 +1,42 @@
+{% extends "main.html" %}
+
+{% block title %}Регистрация дезинсектора{% endblock %}
+
+{% block content %}
+<h3>Регистрация нового дезинсектора</h3>
+<form method="POST" action="{{ url_for('auth.register_disinsector') }}">
+    {{ form.hidden_tag() }}
+
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <label for="name">Имя дезинсектора:</label>
+    {{ form.name(size=32) }}
+    <br>
+
+    <label for="email">Email дезинсектора:</label>
+    {{ form.email(size=32) }}
+    <br>
+
+    <label for="password">Пароль:</label>
+    {{ form.password(size=32) }}
+    <br>
+
+    <label for="token">Токен бота:</label>
+    {{ form.token(size=64) }}
+    <br>
+
+    {{ form.submit() }}
+</form>
+
+{% with messages = get_flashed_messages() %}
+    {% if messages %}
+        <div class="message">
+            {% for message in messages %}
+                <p>{{ message }}</p>
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endwith %}
+
+<p><a href="{{ url_for('main.admin_dashboard') }}">Назад к панели администратора</a></p>
+{% endblock %}

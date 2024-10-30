@@ -11,21 +11,9 @@
     <h2>Добро пожаловать, Администратор!</h2>
 
     <h3>Регистрация нового дезинсектора</h3>
-    <form method="POST" action="{{ url_for('auth.register_disinsector') }}">
-        <label for="name">Имя дезинсектора:</label>
-        <input type="text" name="name" required>
-
-        <label for="email">Email дезинсектора:</label>
-        <input type="email" name="email" required>
-
-        <label for="password">Пароль:</label>
-        <input type="password" name="password" required>
-
-        <label for="token">Токен бота:</label>
-        <input type="text" name="token" required>
-
-        <input type="submit" value="Зарегистрировать дезинсектора">
-    </form>
+    <p>
+        <a href="{{ url_for('auth.register_disinsector') }}">Зарегистрировать дезинсектора</a>
+    </p>
 
     <h3>Фильтр по статусу заявок:</h3>
     <form method="GET" action="{{ url_for('main.admin_dashboard') }}">
@@ -69,7 +57,6 @@
                     </select>
                     <input type="submit" value="Обновить">
                 </form>
-
             </td>
         </tr>
         {% endfor %}
