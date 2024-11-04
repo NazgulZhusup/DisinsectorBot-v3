@@ -1,29 +1,30 @@
+<!-- templates/admin_login.html -->
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Авторизация администратора</title>
-    <!-- Ваши стили -->
+    <title>Вход администратора</title>
 </head>
 <body>
-    <h1>Авторизация администратора</h1>
+    <h2>Вход администратора</h2>
+
+    {% if error %}
+        <div class="error">{{ error }}</div>
+    {% endif %}
+
     <form method="POST" action="{{ url_for('auth.admin_login') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
         <label for="email">Email:</label>
-        <input type="email" name="email" id="email" required>
+        <input type="email" name="email" id="email" required><br>
+
         <label for="password">Пароль:</label>
-        <input type="password" name="password" id="password" required>
-        <button type="submit">Войти</button>
+        <input type="password" name="password" id="password" required><br>
+
+        <input type="submit" value="Войти">
     </form>
-    {% with messages = get_flashed_messages() %}
-        {% if messages %}
-            <div class="message">
-                {% for message in messages %}
-                    <p>{{ message }}</p>
-                {% endfor %}
-            </div>
-        {% endif %}
-    {% endwith %}
-    <p><a href="{{ url_for('main.index') }}">Назад</a></p>
+
+    <p><a href="{{ url_for('main.index') }}">На главную</a></p>
 </body>
 </html>

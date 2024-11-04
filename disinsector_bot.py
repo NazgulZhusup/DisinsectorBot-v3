@@ -1,66 +1,91 @@
-# disinsector_bot.py
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session
-from app.model import Disinsector, Order, Client
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
+from app.model import Disinsector, Order
+from database import db
+from config import Config
+from app.keyboards import *
 from app import create_app
-import os
 
 # Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("disinsector_bot.log"),
-        logging.StreamHandler()
-    ]
-)
+logger = logging.getLogger('disinsector_bot')
+logger.setLevel(logging.INFO)
+
+file_handler = logging.FileHandler('disinsector_bot.log')
+stream_handler = logging.StreamHandler()
+
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+stream_handler.setFormatter(formatter)
+
+logger.addHandler(file_handler)
+logger.addHandler(stream_handler)
 
 # Инициализация Flask-приложения и контекста
 app = create_app()
 app_context = app.app_context()
 app_context.push()
 
-# Определение абсолютного пути к базе данных
-basedir = os.path.abspath(os.path.dirname(__file__))
-db_path = os.path.join(basedir, 'app/entoforce_database.db')  # Убедитесь, что имя файла совпадает
-db_uri = f'sqlite:///{db_path}'
-logging.info(f"Используемая база данных: {db_uri}")
-
-# Создание SQLAlchemy engine и session
-engine = create_engine(db_uri)
-Session = scoped_session(sessionmaker(bind=engine))
+logger.info(f"Используемая база данных: {Config.SQLALCHEMY_DATABASE_URI}")
 
 async def start_disinsector_bot(token, disinsector_id):
     storage = MemoryStorage()
-    bot = Bot(token=token)
+    try:
+        bot = Bot(token=token)
+        await bot.get_me()  # Проверка токена
+    except Exception as e:
+        logger.error(f"Неверный токен для дезинсектора id={disinsector_id}: {e}")
+        return
+
     dp = Dispatcher(storage=storage)
 
+    # Обработчик команды /start
     @dp.message(CommandStart())
     async def start_command(message: types.Message, state: FSMContext):
-        session = Session()
         try:
-            disinsector = session.query(Disinsector).filter_by(id=disinsector_id).first()
-            if disinsector:
-                user_id = message.from_user.id
-                disinsector.user_id = user_id
-                session.commit()
-                await state.update_data(disinsector_id=disinsector.id)
-                await message.answer(f"Добро пожаловать, {disinsector.name}! Вы успешно зарегистрировались. Ваш user_id {user_id}.  Теперь вы можете принимать заявки.")
-                logging.info(f"Дезинсектор {disinsector.name} ({disinsector.id}) зарегистрирован с user_id {user_id}")
-            else:
+            telegram_user_id = message.from_user.id
+            logger.info(f"Получен запрос на регистрацию от telegram_user_id={telegram_user_id}")
+
+            # Работаем с db.session внутри контекста приложения Flask
+            disinsector = db.session.query(Disinsector).filter_by(id=disinsector_id).first()
+            if not disinsector:
                 await message.answer("Ошибка авторизации. Некорректный токен.")
-                logging.error(f"Дезинсектор с id {disinsector_id} не найден.")
+                logger.error(f"Дезинсектор с id {disinsector_id} не найден.")
+                return
+
+            logger.info(f"Дезинсектор {disinsector.name} ({disinsector.id}) найден. Проверка telegram_user_id={telegram_user_id}")
+
+            # Проверяем, привязан ли уже этот telegram_user_id к другому дезинсектору
+            existing = db.session.query(Disinsector).filter_by(telegram_user_id=telegram_user_id).first()
+            if existing and existing.id != disinsector.id:
+                await message.answer("Этот Telegram аккаунт уже привязан к другому дезинсектору.")
+                logger.warning(f"Пользователь с telegram_user_id={telegram_user_id} пытается привязаться к дезинсектору id={disinsector.id}, но уже привязан к id={existing.id}")
+                return
+
+            # Привязка telegram_user_id к текущему дезинсектору
+            disinsector.telegram_user_id = telegram_user_id
+            try:
+                db.session.commit()
+                logger.info(f"Присвоен telegram_user_id={telegram_user_id} дезинсектору id={disinsector.id}")
+            except IntegrityError:
+                db.session.rollback()
+                await message.answer("Произошла ошибка при привязке аккаунта. Попробуйте позже.")
+                logger.error(f"IntegrityError при привязке telegram_user_id={telegram_user_id} к дезинсектору id={disinsector.id}")
+                return
+
+            await state.update_data(disinsector_id=disinsector.id)
+            await message.answer(
+                f"Добро пожаловать, {disinsector.name}! Вы успешно зарегистрировались. Теперь вы можете принимать заявки."
+            )
+            logger.info(f"Дезинсектор {disinsector.name} ({disinsector.id}) зарегистрирован с telegram_user_id {telegram_user_id}")
         except Exception as e:
-            logging.error(f"Ошибка в обработчике /start: {e}")
+            logger.error(f"Ошибка в обработчике /start: {e}")
             await message.answer("Произошла ошибка при регистрации.")
-        finally:
-            session.close()
 
     @dp.callback_query(F.data.startswith('accept_order_'))
     async def process_accept_order(callback_query: types.CallbackQuery, state: FSMContext):
@@ -68,58 +93,51 @@ async def start_disinsector_bot(token, disinsector_id):
         user_data = await state.get_data()
         disinsector_id = user_data.get('disinsector_id')
 
-        session = Session()
         try:
-            order = session.query(Order).get(order_id)
+            order = db.session.query(Order).filter_by(id=order_id).first()
             if order:
                 if order.disinsector_id is None:
                     order.disinsector_id = disinsector_id
                     order.order_status = 'В процессе'
-                    session.commit()
+                    db.session.commit()
                     await callback_query.answer("Вы приняли заявку.")
                     await callback_query.message.answer(f"Вы приняли заявку №{order_id}.")
-                    logging.info(f"Заявка {order_id} принята дезинсектором {disinsector_id}")
+                    logger.info(f"Заявка {order_id} принята дезинсектором {disinsector_id}")
                 else:
                     await callback_query.answer("Эта заявка уже была принята другим дезинсектором.", show_alert=True)
             else:
                 await callback_query.answer("Заявка не найдена.", show_alert=True)
-                logging.error(f"Заявка {order_id} не найдена.")
+                logger.error(f"Заявка {order_id} не найдена.")
         except Exception as e:
-            logging.error(f"Ошибка в обработчике принятия заявки: {e}")
+            logger.error(f"Ошибка в обработчике принятия заявки: {e}")
             await callback_query.answer("Произошла ошибка при принятии заявки.", show_alert=True)
-        finally:
-            session.close()
 
     @dp.callback_query(F.data.startswith('decline_order_'))
     async def process_decline_order(callback_query: types.CallbackQuery, state: FSMContext):
         order_id = int(callback_query.data.split('_')[-1])
 
-        session = Session()
         try:
-            order = session.query(Order).get(order_id)
+            order = db.session.query(Order).filter_by(id=order_id).first()
             if order:
                 order.order_status = 'Отклонена'
-                session.commit()
+                db.session.commit()
                 await callback_query.answer("Вы отклонили заявку.")
                 await callback_query.message.answer(f"Вы отклонили заявку №{order_id}.")
-                logging.info(f"Заявка {order_id} отклонена дезинсектором.")
+                logger.info(f"Заявка {order_id} отклонена дезинсектором.")
             else:
                 await callback_query.answer("Заявка не найдена.", show_alert=True)
-                logging.error(f"Заявка {order_id} не найдена.")
+                logger.error(f"Заявка {order_id} не найдена.")
         except Exception as e:
-            logging.error(f"Ошибка в обработчике отклонения заявки: {e}")
+            logger.error(f"Ошибка в обработчике отклонения заявки: {e}")
             await callback_query.answer("Произошла ошибка при отклонении заявки.", show_alert=True)
-        finally:
-            session.close()
 
     @dp.message(F.text == 'Мои заявки')
     async def show_orders(message: types.Message, state: FSMContext):
         user_data = await state.get_data()
         disinsector_id = user_data.get('disinsector_id')
 
-        session = Session()
         try:
-            orders = session.query(Order).filter_by(disinsector_id=disinsector_id).all()
+            orders = db.session.query(Order).filter_by(disinsector_id=disinsector_id).options(joinedload(Order.client)).all()
             if orders:
                 for order in orders:
                     order_info = (
@@ -133,35 +151,31 @@ async def start_disinsector_bot(token, disinsector_id):
             else:
                 await message.answer("У вас нет активных заявок.")
         except Exception as e:
-            logging.error(f"Ошибка в обработчике команды 'Мои заявки': {e}")
+            logger.error(f"Ошибка в обработчике команды 'Мои заявки': {e}")
             await message.answer("Произошла ошибка при получении ваших заявок.")
-        finally:
-            session.close()
 
     await dp.start_polling(bot)
 
 async def main():
-    session = Session()
     try:
-        disinsectors = session.query(Disinsector).all()
+        # Получаем всех дезинсекторов, которые имеют токен бота и привязаны к Telegram User ID
+        disinsectors = db.session.query(Disinsector).filter(
+            Disinsector.token.isnot(None),
+            Disinsector.telegram_user_id.isnot(None)
+        ).all()
         if not disinsectors:
-            logging.error("Нет дезинсекторов для запуска ботов.")
+            logger.error("Нет дезинсекторов для запуска ботов.")
             return
 
         tasks = []
         for disinsector in disinsectors:
             token = disinsector.token
             disinsector_id = disinsector.id
-            if token:
-                tasks.append(start_disinsector_bot(token, disinsector_id))
-            else:
-                logging.warning(f"Дезинсектор {disinsector.name} не имеет токена бота.")
+            tasks.append(start_disinsector_bot(token, disinsector_id))
 
         await asyncio.gather(*tasks)
     except Exception as e:
-        logging.error(f"Error in main: {e}")
-    finally:
-        session.close()
+        logger.error(f"Error in main: {e}")
 
 if __name__ == '__main__':
     asyncio.run(main())

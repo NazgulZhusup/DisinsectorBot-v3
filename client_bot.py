@@ -7,23 +7,37 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 import aiohttp
-import keyboards as kb
-from config import TOKEN  # Убедитесь, что TOKEN определен в config.py
+from keyboards import *
+from config import Config
+from app import create_app
+from app.model import Client, Order
+from database import db
 
-client_token = TOKEN
-bot = Bot(token=client_token)
+# Настройка логирования
+logger = logging.getLogger('client_bot')
+logger.setLevel(logging.INFO)
+
+file_handler = logging.FileHandler('client_bot.log')
+stream_handler = logging.StreamHandler()
+
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+stream_handler.setFormatter(formatter)
+
+logger.addHandler(file_handler)
+logger.addHandler(stream_handler)
+
+# Инициализация Flask-приложения и контекста
+app = create_app()
+app_context = app.app_context()
+app_context.push()
+
+logger.info(f"Используемая база данных: {Config.SQLALCHEMY_DATABASE_URI}")
+
+# Инициализация бота и диспетчера
+bot = Bot(token=Config.CLIENT_BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("client_bot.log"),
-        logging.StreamHandler()
-    ]
-)
-
 
 class ClientForm(StatesGroup):
     name = State()
@@ -34,32 +48,28 @@ class ClientForm(StatesGroup):
     phone = State()
     address = State()
 
-
 @dp.message(CommandStart())
 async def start_command(message: types.Message, state: FSMContext):
     await message.answer("Добрый день! Как к вам можно обращаться?")
     await state.set_state(ClientForm.name)
-
 
 @dp.message(ClientForm.name)
 async def process_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
     await message.answer(
         f"{message.text}, ответьте, пожалуйста, на несколько вопросов, чтобы мы могли просчитать стоимость дезинсекции.",
-        reply_markup=kb.inl_kb_greetings
+        reply_markup=inl_kb_greetings
     )
     await state.set_state(ClientForm.waiting_for_start)
-
 
 @dp.callback_query(F.data == 'start', StateFilter(ClientForm.waiting_for_start))
 async def process_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.answer(
         "Расскажите, пожалуйста, подробнее об объекте. У вас:",
-        reply_markup=kb.inl_kb_object_type
+        reply_markup=inl_kb_object_type
     )
     await state.set_state(ClientForm.object_type)
-
 
 @dp.callback_query(F.data.startswith('object_'), StateFilter(ClientForm.object_type))
 async def process_object(callback: types.CallbackQuery, state: FSMContext):
@@ -68,10 +78,9 @@ async def process_object(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.answer(
         "Сколько насекомых вы обнаружили?",
-        reply_markup=kb.inl_kb_insect_quantity
+        reply_markup=inl_kb_insect_quantity
     )
     await state.set_state(ClientForm.insect_quantity)
-
 
 @dp.callback_query(F.data.startswith('quantity_'), StateFilter(ClientForm.insect_quantity))
 async def process_insect_quantity(callback: types.CallbackQuery, state: FSMContext):
@@ -80,10 +89,9 @@ async def process_insect_quantity(callback: types.CallbackQuery, state: FSMConte
     await callback.answer()
     await callback.message.answer(
         "Есть ли у вас опыт дезинсекции?",
-        reply_markup=kb.inl_kb_experience
+        reply_markup=inl_kb_experience
     )
     await state.set_state(ClientForm.disinsect_experience)
-
 
 @dp.callback_query(F.data.startswith('experience_'), StateFilter(ClientForm.disinsect_experience))
 async def process_disinsect_experience(callback: types.CallbackQuery, state: FSMContext):
@@ -92,10 +100,9 @@ async def process_disinsect_experience(callback: types.CallbackQuery, state: FSM
     await callback.answer()
     await callback.message.answer(
         "Пожалуйста, отправьте ваш номер телефона:",
-        reply_markup=kb.kb_contact
+        reply_markup=kb_contact
     )
     await state.set_state(ClientForm.phone)
-
 
 @dp.message(ClientForm.phone, F.content_type == types.ContentType.CONTACT)
 async def process_phone_contact(message: types.Message, state: FSMContext):
@@ -103,7 +110,6 @@ async def process_phone_contact(message: types.Message, state: FSMContext):
     await state.update_data(phone=phone)
     await message.answer("Пожалуйста, введите ваш домашний адрес:")
     await state.set_state(ClientForm.address)
-
 
 @dp.message(ClientForm.phone, F.content_type == types.ContentType.TEXT)
 async def process_phone_text(message: types.Message, state: FSMContext):
@@ -114,7 +120,6 @@ async def process_phone_text(message: types.Message, state: FSMContext):
     await state.update_data(phone=phone)
     await message.answer("Пожалуйста, введите ваш домашний адрес:")
     await state.set_state(ClientForm.address)
-
 
 @dp.message(ClientForm.address)
 async def process_address(message: types.Message, state: FSMContext):
@@ -136,7 +141,7 @@ async def process_address(message: types.Message, state: FSMContext):
             'address': user_data['address'],
         }
 
-        logging.info(f"Отправка данных на сервер: {payload}")
+        logger.info(f"Отправка данных на сервер: {payload}")
 
         headers = {
             'Content-Type': 'application/json',
@@ -153,19 +158,17 @@ async def process_address(message: types.Message, state: FSMContext):
                         )
                         await state.clear()
                     else:
-                        logging.error(f"Ошибка при отправке данных на сервер: {response.status}, Ответ сервера: {response_text}")
+                        logger.error(f"Ошибка при отправке данных на сервер: {response.status}, Ответ сервера: {response_text}")
                         await message.answer("Произошла ошибка при сохранении данных заявки. Пожалуйста, попробуйте снова.")
             except aiohttp.ClientError as e:
-                logging.error(f"Ошибка сети при отправке данных: {e}")
+                logger.error(f"Ошибка сети при отправке данных: {e}")
                 await message.answer("Сетевая ошибка при сохранении данных заявки. Пожалуйста, попробуйте снова.")
     except Exception as e:
-        logging.error(f"Ошибка при обработке адреса: {e}")
+        logger.error(f"Ошибка при обработке адреса: {e}")
         await message.answer("Произошла ошибка при сохранении данных заявки. Пожалуйста, попробуйте снова.")
-
 
 async def main():
     await dp.start_polling(bot)
-
 
 if __name__ == '__main__':
     asyncio.run(main())
