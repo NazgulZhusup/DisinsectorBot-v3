@@ -1,54 +1,71 @@
-<!-- app/templates/admin_dashboard.html -->
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Админ Дэшборд</title>
+    <title>Панель администратора</title>
+    <style>
+        /* Ваши стили */
+    </style>
 </head>
 <body>
-    <h2>Админ Дэшборд</h2>
+    <h2>Добро пожаловать, Администратор!</h2>
 
-    <p><a href="{{ url_for('auth.logout') }}">Выйти</a></p>
+    <h3>Регистрация нового дезинсектора</h3>
+    <p>
+        <a href="{{ url_for('auth.register_disinsector') }}">Зарегистрировать дезинсектора</a>
+    </p>
 
-    <h3>Заявки</h3>
-
+    <h3>Фильтр по статусу заявок:</h3>
     <form method="GET" action="{{ url_for('main.admin_dashboard') }}">
-        <label for="status">Статус:</label>
-        <select name="status" id="status">
+        <select name="status">
             <option value="Все">Все</option>
             <option value="Новая">Новая</option>
             <option value="В процессе">В процессе</option>
-            <option value="Завершена">Завершена</option>
+            <option value="Выполнено">Выполнено</option>
         </select>
-        <input type="submit" value="Фильтровать">
+        <input type="submit" value="Применить">
     </form>
 
-    <table border="1">
+    <h3>Список заявок:</h3>
+    {% if orders %}
+    <table>
         <tr>
-            <th>ID</th>
-            <th>Клиент</th>
-            <th>Дезинсектор</th>
+            <th>Номер заявки</th>
+            <th>Имя клиента</th>
+            <th>Телефон</th>
+            <th>Адрес</th>
             <th>Статус</th>
-            <th>Объект</th>
-            <th>Количество насекомых</th>
-            <th>Опыт дезинсекции</th>
-            <th>Создано</th>
+            <th>Дезинсектор</th>
+            <th>Обновить статус</th>
         </tr>
         {% for order in orders %}
         <tr>
             <td>{{ order.id }}</td>
             <td>{{ order.client.name }}</td>
-            <td>{{ order.disinsector.name if order.disinsector else 'Не назначен' }}</td>
+            <td>{{ order.client.phone }}</td>
+            <td>{{ order.client.address }}</td>
             <td>{{ order.order_status }}</td>
-            <td>{{ order.object_type }}</td>
-            <td>{{ order.insect_quantity }}</td>
-            <td>{{ 'Да' if order.disinsect_experience else 'Нет' }}</td>
-            <td>{{ order.created_at }}</td>
+            <td>{{ order.disinsector.name if order.disinsector else 'Не назначен' }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('main.update_order_status') }}">
+                    <input type="hidden" name="order_id" value="{{ order.id }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="new_status">
+                        <option value="Новая" {% if order.order_status == 'Новая' %}selected{% endif %}>Новая</option>
+                        <option value="В процессе" {% if order.order_status == 'В процессе' %}selected{% endif %}>В процессе</option>
+                        <option value="Выполнено" {% if order.order_status == 'Выполнено' %}selected{% endif %}>Выполнено</option>
+                    </select>
+                    <input type="submit" value="Обновить">
+                </form>
+            </td>
         </tr>
         {% endfor %}
     </table>
+    {% else %}
+        <p>Заявок нет.</p>
+    {% endif %}
 
-    <p><a href="{{ url_for('auth.register_disinsector') }}">Регистрация дезинсектора</a></p>
+    <br>
+    <a href="{{ url_for('auth.logout') }}">Выйти</a>
 </body>
 </html>

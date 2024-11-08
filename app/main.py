@@ -29,7 +29,7 @@ def index():
 
 @main_bp.route('/admin/dashboard', methods=['GET'])
 def admin_dashboard():
-    if 'user_id' in session and session.get('role') == 'admin':
+    if 'admin_id' in session:
         status = request.args.get('status', 'Все')
         try:
             query = db.session.query(Order).options(
@@ -50,16 +50,14 @@ def admin_dashboard():
 
 @main_bp.route('/disinsector/dashboard')
 def disinsector_dashboard():
-    if 'user_id' in session and session.get('role') == 'disinsector':
-        disinsector_id = session['user_id']
+    if 'disinsector_id' in session:
+        disinsector_id = session['disinsector_id']
         try:
-            disinsector = db.session.query(Disinsector).filter_by(id=disinsector_id).first()
+            disinsector = Disinsector.query.get(disinsector_id)
             if not disinsector:
                 flash("Дезинсектор не найден.", 'danger')
                 return redirect(url_for('auth.disinsector_login'))
-            orders = db.session.query(Order).filter_by(disinsector_id=disinsector_id).options(
-                joinedload(Order.client)
-            ).all()
+            orders = Order.query.filter_by(disinsector_id=disinsector_id).all()
         except Exception as e:
             logger.error(f"Ошибка при загрузке дезинсектор-дэшборда: {e}")
             flash("Произошла ошибка при загрузке заявок.", 'danger')
@@ -69,6 +67,7 @@ def disinsector_dashboard():
         flash("Пожалуйста, войдите как дезинсектор.", 'warning')
         return redirect(url_for('auth.disinsector_login'))
 
+# Функция назначения заявки дезинсектору
 def assign_order_to_disinsector(order, session_db):
     """
     Назначает заявку дезинсектору с наименьшим количеством текущих заказов.
@@ -117,7 +116,7 @@ def create_order():
     disinsect_experience_bool = True if str(disinsect_experience).lower() == 'yes' else False
 
     try:
-        client = db.session.query(Client).filter_by(phone=phone_number).first()
+        client = Client.query.filter_by(phone=phone_number).first()
         if not client:
             client = Client(name=client_name, phone=phone_number, address=address)
             db.session.add(client)
@@ -172,7 +171,7 @@ def create_order():
 
 @main_bp.route('/update_order_status', methods=['POST'])
 def update_order_status():
-    if 'user_id' in session and session.get('role') == 'disinsector':
+    if 'disinsector_id' in session:
         order_id = request.form.get('order_id')
         new_status = request.form.get('new_status')
 
@@ -181,7 +180,12 @@ def update_order_status():
             return redirect(url_for('main.disinsector_dashboard'))
 
         try:
-            order = db.session.query(Order).filter_by(id=order_id, disinsector_id=session['user_id']).first()
+            disinsector = Disinsector.query.get(session['disinsector_id'])
+            if not disinsector:
+                flash("Дезинсектор не найден.", 'danger')
+                return redirect(url_for('auth.disinsector_login'))
+
+            order = Order.query.filter_by(id=order_id, disinsector_id=disinsector.id).first()
             if order:
                 order.order_status = new_status
                 db.session.commit()
@@ -196,3 +200,4 @@ def update_order_status():
     else:
         flash("Неавторизованный доступ.", 'danger')
         return redirect(url_for('auth.disinsector_login'))
+

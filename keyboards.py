@@ -3,10 +3,16 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardBu
 # Клавиатура приветствия с кнопкой "Начать"
 inl_kb_greetings = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Начать", callback_data="start")]
+
 ])
 
 inl_kb_dis_greetings = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Начать", callback_data="OK")]
+])
+
+inl_kb_order_questions = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="Да", callback_data="yes")],
+    [InlineKeyboardButton(text="Нет", callback_data="no")]
 ])
 
 # Клавиатура выбора объекта
@@ -36,6 +42,7 @@ inl_kb_poison_type = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Химикат 3", callback_data="poison_3")]
 ])
 
+
 # Клавиатура для выбора вида насекомого
 inl_kb_insect_type = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Клопы", callback_data="insect_bedbugs")],
@@ -54,3 +61,5 @@ kb_contact = ReplyKeyboardMarkup(
     resize_keyboard=True,
     one_time_keyboard=True
 )
+
+

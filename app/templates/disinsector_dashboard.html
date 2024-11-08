@@ -1,46 +1,56 @@
-<!-- app/templates/disinsector_dashboard.html -->
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Дезинсектор Дэшборд</title>
+    <title>Личный кабинет дезинсектора</title>
+    <style>
+        /* Ваши стили */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
 </head>
 <body>
-    <h2>Дезинсектор Дэшборд</h2>
+    <h2>Добро пожаловать, {{ disinsector.name }}!</h2>
 
-    <p><a href="{{ url_for('auth.logout') }}">Выйти</a></p>
+    <h3>Ваши заявки:</h3>
 
-    <h3>Ваши Заявки</h3>
-
-    <table border="1">
+    {% if orders %}
+    <table>
         <tr>
-            <th>ID</th>
-            <th>Клиент</th>
+            <th>Номер заявки</th>
+            <th>Имя клиента</th>
+            <th>Телефон</th>
+            <th>Адрес</th>
             <th>Статус</th>
-            <th>Объект</th>
-            <th>Количество насекомых</th>
-            <th>Опыт дезинсекции</th>
-            <th>Создано</th>
             <th>Обновить статус</th>
         </tr>
         {% for order in orders %}
         <tr>
             <td>{{ order.id }}</td>
             <td>{{ order.client.name }}</td>
+            <td>{{ order.client.phone }}</td>
+            <td>{{ order.client.address }}</td>
             <td>{{ order.order_status }}</td>
-            <td>{{ order.object_type }}</td>
-            <td>{{ order.insect_quantity }}</td>
-            <td>{{ 'Да' if order.disinsect_experience else 'Нет' }}</td>
-            <td>{{ order.created_at }}</td>
             <td>
                 <form method="POST" action="{{ url_for('main.update_order_status') }}">
-                    {{ csrf_token() }}
                     <input type="hidden" name="order_id" value="{{ order.id }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <select name="new_status">
                         <option value="Новая" {% if order.order_status == 'Новая' %}selected{% endif %}>Новая</option>
                         <option value="В процессе" {% if order.order_status == 'В процессе' %}selected{% endif %}>В процессе</option>
-                        <option value="Завершена" {% if order.order_status == 'Завершена' %}selected{% endif %}>Завершена</option>
+                        <option value="Выполнено" {% if order.order_status == 'Выполнено' %}selected{% endif %}>Выполнено</option>
                     </select>
                     <input type="submit" value="Обновить">
                 </form>
@@ -48,5 +58,11 @@
         </tr>
         {% endfor %}
     </table>
+    {% else %}
+        <p>На данный момент у вас нет заявок.</p>
+    {% endif %}
+
+    <br>
+    <a href="{{ url_for('auth.logout') }}">Выйти</a>
 </body>
 </html>

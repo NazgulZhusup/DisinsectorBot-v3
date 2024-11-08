@@ -12,6 +12,8 @@ from config import Config
 from app import create_app
 from app.model import Client, Order
 from database import db
+from app.shared_functions import send_notification_to_disinsector_and_start_questions
+from app.api import assign_order_to_disinsector
 
 # Настройка логирования
 logger = logging.getLogger('client_bot')
@@ -35,10 +37,21 @@ app_context.push()
 logger.info(f"Используемая база данных: {Config.SQLALCHEMY_DATABASE_URI}")
 
 # Инициализация бота и диспетчера
-bot = Bot(token=Config.CLIENT_BOT_TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
+client_token = Config.CLIENT_BOT_TOKEN
 
+# Проверка и логирование токена
+if not client_token:
+    logger.error("CLIENT_BOT_TOKEN не установлен в конфигурации.")
+    raise ValueError("CLIENT_BOT_TOKEN не установлен в конфигурации.")
+else:
+    logger.info("CLIENT_BOT_TOKEN успешно загружен.")
+
+bot = Bot(token=client_token)
+storage = MemoryStorage()
+dp = Dispatcher(bot=bot, storage=storage)
+
+
+# FSM States
 class ClientForm(StatesGroup):
     name = State()
     waiting_for_start = State()
@@ -48,10 +61,12 @@ class ClientForm(StatesGroup):
     phone = State()
     address = State()
 
+
 @dp.message(CommandStart())
 async def start_command(message: types.Message, state: FSMContext):
     await message.answer("Добрый день! Как к вам можно обращаться?")
     await state.set_state(ClientForm.name)
+
 
 @dp.message(ClientForm.name)
 async def process_name(message: types.Message, state: FSMContext):
@@ -62,6 +77,7 @@ async def process_name(message: types.Message, state: FSMContext):
     )
     await state.set_state(ClientForm.waiting_for_start)
 
+
 @dp.callback_query(F.data == 'start', StateFilter(ClientForm.waiting_for_start))
 async def process_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -70,6 +86,7 @@ async def process_start(callback: types.CallbackQuery, state: FSMContext):
         reply_markup=inl_kb_object_type
     )
     await state.set_state(ClientForm.object_type)
+
 
 @dp.callback_query(F.data.startswith('object_'), StateFilter(ClientForm.object_type))
 async def process_object(callback: types.CallbackQuery, state: FSMContext):
@@ -82,6 +99,7 @@ async def process_object(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.set_state(ClientForm.insect_quantity)
 
+
 @dp.callback_query(F.data.startswith('quantity_'), StateFilter(ClientForm.insect_quantity))
 async def process_insect_quantity(callback: types.CallbackQuery, state: FSMContext):
     quantity_selected = callback.data.split('_', 1)[1]
@@ -92,6 +110,7 @@ async def process_insect_quantity(callback: types.CallbackQuery, state: FSMConte
         reply_markup=inl_kb_experience
     )
     await state.set_state(ClientForm.disinsect_experience)
+
 
 @dp.callback_query(F.data.startswith('experience_'), StateFilter(ClientForm.disinsect_experience))
 async def process_disinsect_experience(callback: types.CallbackQuery, state: FSMContext):
@@ -104,12 +123,14 @@ async def process_disinsect_experience(callback: types.CallbackQuery, state: FSM
     )
     await state.set_state(ClientForm.phone)
 
+
 @dp.message(ClientForm.phone, F.content_type == types.ContentType.CONTACT)
 async def process_phone_contact(message: types.Message, state: FSMContext):
     phone = re.sub(r'\D', '', message.contact.phone_number)
     await state.update_data(phone=phone)
     await message.answer("Пожалуйста, введите ваш домашний адрес:")
     await state.set_state(ClientForm.address)
+
 
 @dp.message(ClientForm.phone, F.content_type == types.ContentType.TEXT)
 async def process_phone_text(message: types.Message, state: FSMContext):
@@ -121,6 +142,7 @@ async def process_phone_text(message: types.Message, state: FSMContext):
     await message.answer("Пожалуйста, введите ваш домашний адрес:")
     await state.set_state(ClientForm.address)
 
+
 @dp.message(ClientForm.address)
 async def process_address(message: types.Message, state: FSMContext):
     try:
@@ -130,45 +152,54 @@ async def process_address(message: types.Message, state: FSMContext):
             return
         await state.update_data(address=address)
 
+        # Получаем все данные из состояния
         user_data = await state.get_data()
 
-        payload = {
-            'client_name': user_data['name'],
-            'object_type': user_data['object_type'],
-            'insect_quantity': user_data['insect_quantity'],
-            'disinsect_experience': user_data['disinsect_experience'],
-            'phone_number': user_data['phone'],
-            'address': user_data['address'],
-        }
+        # Сохраняем клиента в базе данных
+        client = Client.query.filter_by(phone=user_data['phone']).first()
+        if not client:
+            client = Client(name=user_data['name'], phone=user_data['phone'], address=user_data['address'])
+            db.session.add(client)
+            db.session.commit()
 
-        logger.info(f"Отправка данных на сервер: {payload}")
+        disinsect_experience = user_data['disinsect_experience'] == 'yes'
+        # Создаем новую заявку
+        new_order = Order(
+            client_id=client.id,
+            object_type=user_data['object_type'],
+            insect_quantity=user_data['insect_quantity'],
+            disinsect_experience=disinsect_experience,
+            order_status='Новая'
+        )
+        db.session.add(new_order)
+        db.session.commit()
 
-        headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        }
+        # Назначаем дезинсектора на заявку
+        # Назначаем дезинсектора на заявку
+        assigned_disinsector = assign_order_to_disinsector(new_order)
+        if assigned_disinsector:
+            # Проверка: если send_notification_to_disinsector_and_start_questions является асинхронной функцией
+            if asyncio.iscoroutinefunction(send_notification_to_disinsector_and_start_questions):
+                await send_notification_to_disinsector_and_start_questions(assigned_disinsector, new_order)
+            else:
+                send_notification_to_disinsector_and_start_questions(assigned_disinsector, new_order)
+            logger.info(f"Заявка {new_order.id} назначена дезинсектору {assigned_disinsector.name}")
+        else:
+            logger.warning("Нет доступных дезинсекторов для назначения заявки.")
+            await message.answer("Ваша заявка принята, но пока нет доступного дезинсектора. Мы свяжемся с вами позже.")
+            return
 
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post('http://127.0.0.1:5000/api/create_order', json=payload, headers=headers) as response:
-                    response_text = await response.text()
-                    if response.status == 200:
-                        await message.answer(
-                            f"Спасибо, {user_data['name']}! Ваша заявка принята. Мы скоро свяжемся с вами."
-                        )
-                        await state.clear()
-                    else:
-                        logger.error(f"Ошибка при отправке данных на сервер: {response.status}, Ответ сервера: {response_text}")
-                        await message.answer("Произошла ошибка при сохранении данных заявки. Пожалуйста, попробуйте снова.")
-            except aiohttp.ClientError as e:
-                logger.error(f"Ошибка сети при отправке данных: {e}")
-                await message.answer("Сетевая ошибка при сохранении данных заявки. Пожалуйста, попробуйте снова.")
+        await message.answer("Спасибо! Ваша заявка принята. Мы скоро свяжемся с вами.")
+        await state.clear()
+
     except Exception as e:
-        logger.error(f"Ошибка при обработке адреса: {e}")
-        await message.answer("Произошла ошибка при сохранении данных заявки. Пожалуйста, попробуйте снова.")
+        logger.error(f"Ошибка при создании заявки: {e}")
+        await message.answer("Произошла ошибка при обработке заявки. Пожалуйста, попробуйте снова.")
+
 
 async def main():
     await dp.start_polling(bot)
+
 
 if __name__ == '__main__':
     asyncio.run(main())

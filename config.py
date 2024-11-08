@@ -1,13 +1,18 @@
 # config.py
 
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 
-# Определяем базовую директорию проекта (директорию, где находится config.py)
-basedir = os.path.abspath(os.path.dirname(__file__))
+basedir = Path(__file__).parent
+load_dotenv(dotenv_path=basedir / '.env')
 
 class Config:
-    # Абсолютный путь к базе данных
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///' + os.path.join(basedir, 'entoforce_database.db')
+
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///' + str(basedir / 'entoforce_database.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SECRET_KEY = 'your_secret_key'  # Замените на ваш реальный секретный ключ
-    CLIENT_BOT_TOKEN = '7752853484:AAGqFKHqoY0JBSeJUB3Br4Ypg13PMxLNa4c'  # Ваш токен бота
+    SECRET_KEY = os.getenv('SECRET_KEY', 'your_secret_key')  # Используйте переменные окружения для безопасности
+    CLIENT_BOT_TOKEN = os.getenv('CLIENT_BOT_TOKEN', 'YOUR_CLIENT_BOT_TOKEN_HERE')
+    API_KEY = os.getenv('API_KEY', 'your_default_api_key')
+    LOG_FILE = os.getenv('LOG_FILE', 'app.log')
+
