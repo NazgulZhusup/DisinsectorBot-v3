@@ -1,6 +1,6 @@
 # app/shared_functions.py
 
-from app.model import Disinsector
+from app.model import Disinsector, Order
 from database import db
 from datetime import datetime
 from app.utils import send_telegram_message
@@ -9,9 +9,11 @@ import logging
 logger = logging.getLogger('shared_functions')
 
 
-def get_next_disinsector():
+def assign_and_notify_disinsector(order):
+    """
+    Назначает дезинсектора для заявки и отправляет ему уведомление.
+    """
     try:
-        # Получаем всех доступных дезинсекторов
         available_disinsectors = Disinsector.query.filter(
             Disinsector.token.isnot(None),
             Disinsector.telegram_user_id.isnot(None),
@@ -19,23 +21,31 @@ def get_next_disinsector():
         ).order_by(Disinsector.last_assigned).all()
 
         if not available_disinsectors:
-            logger.warning("Нет доступных дезинсекторов.")
+            logger.warning("Нет доступных дезинсекторов для назначения заявки.")
             return None
 
-        # Возвращаем первого доступного дезинсектора
-        next_disinsector = available_disinsectors[0]
-        next_disinsector.last_assigned = datetime.utcnow()  # Обновляем метку времени для очередности
+        # Назначение дезинсектора
+        disinsector = available_disinsectors[0]
+        order.disinsector_id = disinsector.id
+        disinsector.last_assigned = datetime.utcnow()
+        disinsector.load += 1
         db.session.commit()
 
-        logger.info(f"Выбран дезинсектор с ID: {next_disinsector.id}")
-        return next_disinsector
+        # Уведомление дезинсектора
+        notify_new_order(disinsector, order)
+        logger.info(f"Заявка {order.id} назначена дезинсектору {disinsector.name} (ID: {disinsector.id})")
+        return disinsector
+
     except Exception as e:
-        logger.error(f"Ошибка при выборе дезинсектора: {e}")
+        logger.error(f"Ошибка при назначении дезинсектора: {e}")
         db.session.rollback()
         return None
 
 
-async def send_notification_to_disinsector_and_start_questions(disinsector, order):
+def notify_new_order(disinsector, order):
+    """
+    Отправляет уведомление дезинсектору о новой заявке.
+    """
     try:
         message = (
             f"🔔 Новая заявка №{order.id}.\n"
@@ -44,6 +54,6 @@ async def send_notification_to_disinsector_and_start_questions(disinsector, orde
             "Согласны принять заявку?"
         )
         send_telegram_message(disinsector.token, disinsector.telegram_user_id, message)
-        logging.info(f"Уведомление отправлено дезинсектору {disinsector.name}")
+        logger.info(f"Уведомление отправлено дезинсектору {disinsector.name}")
     except Exception as e:
-        logging.error(f"Ошибка при отправке уведомления: {e}")
+        logger.error(f"Ошибка при отправке уведомления дезинсектору: {e}")

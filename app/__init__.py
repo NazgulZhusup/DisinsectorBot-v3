@@ -13,7 +13,6 @@ from database import db
 csrf = CSRFProtect()
 migrate = Migrate()
 
-# app/__init__.py
 
 def create_app():
     app = Flask(__name__)

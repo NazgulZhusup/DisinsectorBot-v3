@@ -12,8 +12,7 @@ from config import Config
 from app import create_app
 from app.model import Client, Order
 from database import db
-from app.shared_functions import send_notification_to_disinsector_and_start_questions
-from app.api import assign_order_to_disinsector
+from app.shared_functions import assign_and_notify_disinsector
 
 # Настройка логирования
 logger = logging.getLogger('client_bot')
@@ -39,7 +38,6 @@ logger.info(f"Используемая база данных: {Config.SQLALCHEMY
 # Инициализация бота и диспетчера
 client_token = Config.CLIENT_BOT_TOKEN
 
-# Проверка и логирование токена
 if not client_token:
     logger.error("CLIENT_BOT_TOKEN не установлен в конфигурации.")
     raise ValueError("CLIENT_BOT_TOKEN не установлен в конфигурации.")
@@ -49,7 +47,6 @@ else:
 bot = Bot(token=client_token)
 storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
-
 
 # FSM States
 class ClientForm(StatesGroup):
@@ -162,8 +159,8 @@ async def process_address(message: types.Message, state: FSMContext):
             db.session.add(client)
             db.session.commit()
 
-        disinsect_experience = user_data['disinsect_experience'] == 'yes'
         # Создаем новую заявку
+        disinsect_experience = user_data['disinsect_experience'] == 'yes'
         new_order = Order(
             client_id=client.id,
             object_type=user_data['object_type'],
@@ -174,15 +171,9 @@ async def process_address(message: types.Message, state: FSMContext):
         db.session.add(new_order)
         db.session.commit()
 
-        # Назначаем дезинсектора на заявку
-        # Назначаем дезинсектора на заявку
-        assigned_disinsector = assign_order_to_disinsector(new_order)
+        # Назначаем дезинсектора и отправляем уведомление
+        assigned_disinsector = assign_and_notify_disinsector(new_order)
         if assigned_disinsector:
-            # Проверка: если send_notification_to_disinsector_and_start_questions является асинхронной функцией
-            if asyncio.iscoroutinefunction(send_notification_to_disinsector_and_start_questions):
-                await send_notification_to_disinsector_and_start_questions(assigned_disinsector, new_order)
-            else:
-                send_notification_to_disinsector_and_start_questions(assigned_disinsector, new_order)
             logger.info(f"Заявка {new_order.id} назначена дезинсектору {assigned_disinsector.name}")
         else:
             logger.warning("Нет доступных дезинсекторов для назначения заявки.")

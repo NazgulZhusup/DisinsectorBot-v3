@@ -36,12 +36,23 @@ inl_kb_experience = InlineKeyboardMarkup(inline_keyboard=[
 ])
 
 # Клавиатура для выбора химиката
-inl_kb_poison_type = InlineKeyboardMarkup(inline_keyboard=[
+inl_kb_accept_order = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="Да", callback_data="accept_order_yes")],
+    [InlineKeyboardButton(text="Нет", callback_data="accept_order_no")]
+])
+
+
+inl_kb_chemical_type = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Химикат 1", callback_data="poison_1")],
     [InlineKeyboardButton(text="Химикат 2", callback_data="poison_2")],
     [InlineKeyboardButton(text="Химикат 3", callback_data="poison_3")]
 ])
 
+inl_kb_poison_type = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="Яд 1", callback_data="poison_1")],
+    [InlineKeyboardButton(text="Яд 2", callback_data="poison_2")],
+    [InlineKeyboardButton(text="Яд 3", callback_data="poison_3")]
+])
 
 # Клавиатура для выбора вида насекомого
 inl_kb_insect_type = InlineKeyboardMarkup(inline_keyboard=[
