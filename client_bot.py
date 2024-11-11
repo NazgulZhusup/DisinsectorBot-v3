@@ -6,7 +6,6 @@ from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-import aiohttp
 from keyboards import *
 from config import Config
 from app import create_app
@@ -27,13 +26,6 @@ stream_handler.setFormatter(formatter)
 
 logger.addHandler(file_handler)
 logger.addHandler(stream_handler)
-
-# Инициализация Flask-приложения и контекста
-app = create_app()
-app_context = app.app_context()
-app_context.push()
-
-logger.info(f"Используемая база данных: {Config.SQLALCHEMY_DATABASE_URI}")
 
 # Инициализация бота и диспетчера
 client_token = Config.CLIENT_BOT_TOKEN
@@ -58,12 +50,10 @@ class ClientForm(StatesGroup):
     phone = State()
     address = State()
 
-
 @dp.message(CommandStart())
 async def start_command(message: types.Message, state: FSMContext):
     await message.answer("Добрый день! Как к вам можно обращаться?")
     await state.set_state(ClientForm.name)
-
 
 @dp.message(ClientForm.name)
 async def process_name(message: types.Message, state: FSMContext):
@@ -74,7 +64,6 @@ async def process_name(message: types.Message, state: FSMContext):
     )
     await state.set_state(ClientForm.waiting_for_start)
 
-
 @dp.callback_query(F.data == 'start', StateFilter(ClientForm.waiting_for_start))
 async def process_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -83,7 +72,6 @@ async def process_start(callback: types.CallbackQuery, state: FSMContext):
         reply_markup=inl_kb_object_type
     )
     await state.set_state(ClientForm.object_type)
-
 
 @dp.callback_query(F.data.startswith('object_'), StateFilter(ClientForm.object_type))
 async def process_object(callback: types.CallbackQuery, state: FSMContext):
@@ -96,7 +84,6 @@ async def process_object(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.set_state(ClientForm.insect_quantity)
 
-
 @dp.callback_query(F.data.startswith('quantity_'), StateFilter(ClientForm.insect_quantity))
 async def process_insect_quantity(callback: types.CallbackQuery, state: FSMContext):
     quantity_selected = callback.data.split('_', 1)[1]
@@ -107,7 +94,6 @@ async def process_insect_quantity(callback: types.CallbackQuery, state: FSMConte
         reply_markup=inl_kb_experience
     )
     await state.set_state(ClientForm.disinsect_experience)
-
 
 @dp.callback_query(F.data.startswith('experience_'), StateFilter(ClientForm.disinsect_experience))
 async def process_disinsect_experience(callback: types.CallbackQuery, state: FSMContext):
@@ -120,14 +106,12 @@ async def process_disinsect_experience(callback: types.CallbackQuery, state: FSM
     )
     await state.set_state(ClientForm.phone)
 
-
 @dp.message(ClientForm.phone, F.content_type == types.ContentType.CONTACT)
 async def process_phone_contact(message: types.Message, state: FSMContext):
     phone = re.sub(r'\D', '', message.contact.phone_number)
     await state.update_data(phone=phone)
     await message.answer("Пожалуйста, введите ваш домашний адрес:")
     await state.set_state(ClientForm.address)
-
 
 @dp.message(ClientForm.phone, F.content_type == types.ContentType.TEXT)
 async def process_phone_text(message: types.Message, state: FSMContext):
@@ -138,7 +122,6 @@ async def process_phone_text(message: types.Message, state: FSMContext):
     await state.update_data(phone=phone)
     await message.answer("Пожалуйста, введите ваш домашний адрес:")
     await state.set_state(ClientForm.address)
-
 
 @dp.message(ClientForm.address)
 async def process_address(message: types.Message, state: FSMContext):
@@ -175,22 +158,22 @@ async def process_address(message: types.Message, state: FSMContext):
         assigned_disinsector = assign_and_notify_disinsector(new_order)
         if assigned_disinsector:
             logger.info(f"Заявка {new_order.id} назначена дезинсектору {assigned_disinsector.name}")
+            await message.answer("Спасибо! Ваша заявка принята и назначена дезинсектору. Мы скоро свяжемся с вами.")
         else:
             logger.warning("Нет доступных дезинсекторов для назначения заявки.")
             await message.answer("Ваша заявка принята, но пока нет доступного дезинсектора. Мы свяжемся с вами позже.")
             return
 
-        await message.answer("Спасибо! Ваша заявка принята. Мы скоро свяжемся с вами.")
         await state.clear()
 
     except Exception as e:
         logger.error(f"Ошибка при создании заявки: {e}")
         await message.answer("Произошла ошибка при обработке заявки. Пожалуйста, попробуйте снова.")
 
-
 async def main():
-    await dp.start_polling(bot)
-
+    app = create_app()
+    with app.app_context():  # Используем обычный синхронный контекст
+        await dp.start_polling(bot)
 
 if __name__ == '__main__':
     asyncio.run(main())
