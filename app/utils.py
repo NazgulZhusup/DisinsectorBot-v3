@@ -12,3 +12,6 @@ def send_telegram_message(token, chat_id, text):
             logger.error(f"Не удалось отправить сообщение через Telegram: {response.text}")
     except Exception as e:
         logger.error(f"Ошибка при отправке сообщения через Telegram: {e}")
+
+
+

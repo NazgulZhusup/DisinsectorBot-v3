@@ -1,7 +1,6 @@
-# disinsector_bot.py
-
 import asyncio
 import logging
+from datetime import datetime
 from sqlite3 import IntegrityError
 
 from aiogram import Bot, Dispatcher, types, F
@@ -13,7 +12,6 @@ from app.model import Disinsector, Order
 from database import db
 from app.utils import send_telegram_message
 from config import Config
-from app.shared_functions import notify_new_order
 from app import create_app
 from keyboards import inl_kb_accept_order, inl_kb_chemical_type, inl_kb_poison_type, inl_kb_insect_type
 
@@ -31,25 +29,24 @@ logger.addHandler(stream_handler)
 
 # Определение состояний FSM
 class OrderForm(StatesGroup):
-    accept = State()
-    chemical_type = State()
-    area = State()
-    poison_type = State()
-    insect_type = State()
-    estimated_cost = State()
+    accept = State()  # Ожидание ответа на принятие заявки
+    chemical_type = State()  # Выбор химиката
+    area = State()  # Площадь помещения
+    poison_type = State()  # Тип яда
+    insect_type = State()  # Тип насекомых
+    estimated_cost = State()  # Оценка стоимости
 
 # Асинхронная функция запуска бота дезинсектора
 async def start_disinsector_bot(token, disinsector_id):
     storage = MemoryStorage()
-    bot = Bot(token=token)
+    bot = Bot(token=token)  # Здесь создаем объект bot
     dp = Dispatcher(bot=bot, storage=storage)
 
     @dp.message(CommandStart())
     async def start_command(message: types.Message, state: FSMContext):
         try:
             telegram_user_id = message.from_user.id
-            logger.info(
-                f"Получен запрос на регистрацию от telegram_user_id={telegram_user_id} для дезинсектора id={disinsector_id}")
+            logger.info(f"Получен запрос на регистрацию от telegram_user_id={telegram_user_id} для дезинсектора id={disinsector_id}")
 
             # Получаем дезинсектора по его уникальному id, используя Session.get()
             disinsector = db.session.get(Disinsector, disinsector_id)
@@ -58,66 +55,76 @@ async def start_disinsector_bot(token, disinsector_id):
                 logger.error(f"Дезинсектор с id {disinsector_id} не найден.")
                 return
 
+            logger.info(f"Дезинсектор найден: {disinsector.id}, {disinsector.name}")
+
             # Проверяем, имеет ли дезинсектор уже telegram_user_id
             if disinsector.telegram_user_id:
                 if disinsector.telegram_user_id == telegram_user_id:
-                    # Если дезинсектор уже привязан к текущему telegram_user_id, подтверждаем регистрацию
                     await message.answer(f"Добро пожаловать снова, {disinsector.name}! Вы уже зарегистрированы.")
-                    logger.info(
-                        f"Дезинсектор {disinsector.name} ({disinsector.id}) уже зарегистрирован с telegram_user_id {telegram_user_id}")
+                    logger.info(f"Дезинсектор {disinsector.name} ({disinsector.id}) уже зарегистрирован с telegram_user_id {telegram_user_id}")
                 else:
-                    # Если дезинсектор уже привязан к другому telegram_user_id, запрещаем перепривязку
                     await message.answer("Этот дезинсектор уже привязан к другому Telegram аккаунту.")
-                    logger.warning(
-                        f"Дезинсектор id={disinsector.id} уже привязан к другому telegram_user_id={disinsector.telegram_user_id}")
+                    logger.warning(f"Дезинсектор id={disinsector.id} уже привязан к другому telegram_user_id={disinsector.telegram_user_id}")
                 return
 
             # Проверяем, привязан ли telegram_user_id к другому дезинсектору
             existing_disinsector = db.session.query(Disinsector).filter_by(telegram_user_id=telegram_user_id).first()
 
             if existing_disinsector:
-                # Если telegram_user_id уже привязан к другому дезинсектору, запрещаем перепривязку
                 await message.answer("Этот Telegram аккаунт уже привязан к другому дезинсектору.")
-                logger.warning(
-                    f"Пользователь с telegram_user_id={telegram_user_id} уже привязан к дезинсектору id={existing_disinsector.id}")
+                logger.warning(f"Пользователь с telegram_user_id={telegram_user_id} уже привязан к дезинсектору id={existing_disinsector.id}")
                 return
 
             # Привязываем telegram_user_id к текущему дезинсектору, если он не привязан
             disinsector.telegram_user_id = telegram_user_id
+            logger.info(f"Попытка привязать telegram_user_id {telegram_user_id} к дезинсектору {disinsector.id}")
             try:
+                db.session.flush()  # Принудительная синхронизация с базой данных
                 db.session.commit()
-                logger.info(f"Присвоен telegram_user_id={telegram_user_id} дезинсектору id={disinsector.id}")
-            except IntegrityError:
+                logger.info(f"telegram_user_id {telegram_user_id} успешно привязан к дезинсектору {disinsector.id}")
+            except IntegrityError as e:
                 db.session.rollback()
                 await message.answer("Произошла ошибка при привязке аккаунта. Попробуйте позже.")
-                logger.error(
-                    f"IntegrityError при привязке telegram_user_id={telegram_user_id} к дезинсектору id={disinsector.id}")
+                logger.error(f"IntegrityError при привязке telegram_user_id={telegram_user_id} к дезинсектору id={disinsector.id}: {e}")
                 return
 
             welcome_text = f"Добро пожаловать, {disinsector.name}! Вы успешно зарегистрировались и можете принимать заявки."
             send_telegram_message(token, telegram_user_id, welcome_text)
 
             await state.update_data(disinsector_id=disinsector.id)
-            await message.answer(
-                f"Добро пожаловать, {disinsector.name}! Вы успешно зарегистрировались. Теперь вы можете принимать заявки.")
-            logger.info(
-                f"Дезинсектор {disinsector.name} ({disinsector.id}) зарегистрирован с telegram_user_id {telegram_user_id}")
+
+            await message.answer("Добрый день! Нажмите 'Ок', чтобы принять заявку и начать опрос.",
+                                 reply_markup=inl_kb_accept_order)
+            await state.set_state(OrderForm.accept_order)
+
         except Exception as e:
-            logger.error(f"Ошибка в обработчике /start: {e}")
-            await message.answer("Произошла ошибка при регистрации.")
+            logger.error(f"Произошла ошибка при обработке команды /start: {e}")
+            await message.answer("Произошла ошибка при обработке команды /start. Попробуйте позже.")
+
+
 
     # Обработчики для работы с заявкой
     @dp.callback_query(F.data == 'accept_order_yes', StateFilter(OrderForm.accept))
     async def accept_order(callback: types.CallbackQuery, state: FSMContext):
-        await callback.answer()
-        await callback.message.answer("Вы приняли заявку. Укажите тип химиката.", reply_markup=inl_kb_chemical_type)
-        await state.set_state(OrderForm.chemical_type)
+        user_data = await state.get_data()
+        disinsector_id = user_data['disinsector_id']  # Используем disinsector_id из состояния
 
-    @dp.callback_query(F.data == 'accept_order_no', StateFilter(OrderForm.accept))
-    async def reject_order(callback: types.CallbackQuery, state: FSMContext):
-        await callback.answer()
-        await callback.message.answer("Вы отказались от заявки.")
-        await state.clear()
+        # Получаем первую заявку с статусом 'Новая'
+        order = db.session.query(Order).filter_by(disinsector_id=disinsector_id, order_status='Новая').first()
+
+        if order:
+            order.order_status = 'В процессе'
+            db.session.commit()
+            await callback.answer("Заявка принята.")
+            await callback.message.answer("Вы приняли заявку. Укажите тип химиката для обработки.", reply_markup=inl_kb_chemical_type)
+            await state.set_state(OrderForm.chemical_type)
+
+            # Передаем заявку в общую функцию назначения и уведомления, передав объект bot
+            assign_and_notify_disinsector(bot, order)  # Передаем bot в функцию
+
+        else:
+            await callback.answer("Ошибка, заявка не найдена.")
+
 
     @dp.callback_query(StateFilter(OrderForm.chemical_type))
     async def process_chemical_type(callback: types.CallbackQuery, state: FSMContext):
@@ -146,7 +153,8 @@ async def start_disinsector_bot(token, disinsector_id):
     @dp.message(StateFilter(OrderForm.estimated_cost))
     async def process_estimated_cost(message: types.Message, state: FSMContext):
         user_data = await state.get_data()
-        order = db.session.query(Order).filter_by(disinsector_id=disinsector_id, order_status='Новая').first()
+        order = db.session.query(Order).filter_by(disinsector_id=user_data['disinsector_id'], order_status='Новая').first()
+
         if order:
             order.chemical_type = user_data['chemical_type']
             order.area = user_data['area']
@@ -162,6 +170,72 @@ async def start_disinsector_bot(token, disinsector_id):
 
     await dp.start_polling(bot)
 
+# Функция назначения дезинсектора и уведомления
+async def assign_and_notify_disinsector(order):
+    """
+    Назначает дезинсектора для заявки и отправляет ему уведомление.
+    """
+    try:
+        # Запрос доступных дезинсекторов
+        available_disinsectors = Disinsector.query.filter(
+            Disinsector.token.isnot(None),
+            Disinsector.telegram_user_id.isnot(None),
+            Disinsector.load < Disinsector.max_load
+        ).order_by(Disinsector.last_assigned).all()
+
+        if not available_disinsectors:
+            logger.warning(f"Заявка {order.id}: Нет доступных дезинсекторов для назначения.")
+            return None
+
+        # Назначение дезинсектора
+        disinsector = available_disinsectors[0]
+        order.disinsector_id = disinsector.id  # Присваиваем disinsector_id заказу
+        disinsector.last_assigned = datetime.utcnow()
+        disinsector.load += 1
+        db.session.commit()
+
+        # Создаем бота с токеном дезинсектора и отправляем уведомление
+        bot_disinsector = Bot(token=disinsector.token)
+        await notify_new_order(bot_disinsector, disinsector, order)
+
+        return disinsector
+
+    except Exception as e:
+        logger.error(f"Ошибка при назначении дезинсектора для заявки {order.id}: {e}")
+        db.session.rollback()
+        return None
+
+# Функция уведомления дезинсектора
+async def notify_new_order(bot, disinsector, order):
+    """
+    Отправляет уведомление дезинсектору о новой заявке с кнопкой "Ок" для принятия.
+    """
+    try:
+        buttons = inl_kb_accept_order
+
+        message = (
+            f"🔔 Новая заявка №{order.id}.\n"
+            f"Имя: {order.client.name}\n"
+            f"Адрес: {order.client.address}\n"
+            f"Телефон: {order.client.phone}\n"
+            f"Объект: {order.object_type}\n"
+
+        )
+
+        # Отправляем сообщение с кнопками
+        await bot.send_message(disinsector.telegram_user_id, message, reply_markup=buttons)
+        logger.info(f"Уведомление отправлено дезинсектору {disinsector.name}")
+
+    except Exception as e:
+        logger.error(f"Ошибка при отправке уведомления дезинсектору {disinsector.name}: {e}")
+        # Дополнительная диагностика ошибок
+        if "chat not found" in str(e):
+            logger.error(f"Не удалось отправить сообщение дезинсектору с ID {disinsector.telegram_user_id}. Возможно, он не начал чат с ботом.")
+        else:
+            logger.error(f"Неизвестная ошибка при отправке сообщения: {e}")
+
+
+
 # Основная функция для запуска всех ботов
 async def disinsector_bot_main():
     app = create_app()
@@ -172,6 +246,7 @@ async def disinsector_bot_main():
             for disinsector in disinsectors
         ]
         await asyncio.gather(*tasks)
+
 
 if __name__ == '__main__':
     asyncio.run(disinsector_bot_main())

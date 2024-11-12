@@ -35,12 +35,6 @@ inl_kb_experience = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Нет", callback_data="experience_no")]
 ])
 
-# Клавиатура для выбора химиката
-inl_kb_accept_order = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="Да", callback_data="accept_order_yes")],
-    [InlineKeyboardButton(text="Нет", callback_data="accept_order_no")]
-])
-
 
 inl_kb_chemical_type = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Химикат 1", callback_data="poison_1")],
@@ -62,6 +56,9 @@ inl_kb_insect_type = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Клещи", callback_data="insect_ticks")]
 ])
 
+inl_kb_accept_order = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="Ок", callback_data="accept_order_yes")]
+])
 # Клавиатура для сбора контакта
 kb_contact = ReplyKeyboardMarkup(
     keyboard=[
@@ -72,5 +69,3 @@ kb_contact = ReplyKeyboardMarkup(
     resize_keyboard=True,
     one_time_keyboard=True
 )
-
-

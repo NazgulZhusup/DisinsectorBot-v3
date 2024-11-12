@@ -9,9 +9,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from keyboards import *
 from config import Config
 from app import create_app
-from app.model import Client, Order
+from app.model import Client, Order, Disinsector
 from database import db
-from app.shared_functions import assign_and_notify_disinsector
+from disinsector_bot import assign_and_notify_disinsector
 
 # Настройка логирования
 logger = logging.getLogger('client_bot')
@@ -36,9 +36,9 @@ if not client_token:
 else:
     logger.info("CLIENT_BOT_TOKEN успешно загружен.")
 
-bot = Bot(token=client_token)
+bot_client = Bot(token=client_token)
 storage = MemoryStorage()
-dp = Dispatcher(bot=bot, storage=storage)
+dp = Dispatcher(bot=bot_client, storage=storage)
 
 # FSM States
 class ClientForm(StatesGroup):
@@ -154,15 +154,21 @@ async def process_address(message: types.Message, state: FSMContext):
         db.session.add(new_order)
         db.session.commit()
 
+        logger.info(f"Заявка {new_order.id} успешно создана.")
+
         # Назначаем дезинсектора и отправляем уведомление
-        assigned_disinsector = assign_and_notify_disinsector(new_order)
+
+        assigned_disinsector = await assign_and_notify_disinsector(new_order)
+
         if assigned_disinsector:
+            new_order.disinsector_id = assigned_disinsector.id
+            db.session.commit()  # Сохраняем обновленный заказ с disinsector_id
             logger.info(f"Заявка {new_order.id} назначена дезинсектору {assigned_disinsector.name}")
             await message.answer("Спасибо! Ваша заявка принята и назначена дезинсектору. Мы скоро свяжемся с вами.")
         else:
             logger.warning("Нет доступных дезинсекторов для назначения заявки.")
             await message.answer("Ваша заявка принята, но пока нет доступного дезинсектора. Мы свяжемся с вами позже.")
-            return
+
 
         await state.clear()
 
@@ -170,10 +176,11 @@ async def process_address(message: types.Message, state: FSMContext):
         logger.error(f"Ошибка при создании заявки: {e}")
         await message.answer("Произошла ошибка при обработке заявки. Пожалуйста, попробуйте снова.")
 
+
 async def main():
     app = create_app()
     with app.app_context():  # Используем обычный синхронный контекст
-        await dp.start_polling(bot)
+        await dp.start_polling(bot_client)
 
 if __name__ == '__main__':
     asyncio.run(main())

@@ -2,7 +2,7 @@ import asyncio
 
 from flask import Blueprint, request, jsonify
 from app.model import Order, Client
-from app.shared_functions import assign_and_notify_disinsector, notify_new_order
+from disinsector_bot import assign_and_notify_disinsector, notify_new_order
 from database import db
 import logging
 
@@ -39,16 +39,4 @@ def create_order():
     )
     db.session.add(new_order)
     db.session.commit()
-
-    # Назначаем дезинсектора на заявку
-    assigned_disinsector = assign_and_notify_disinsector(new_order)
-    if assigned_disinsector:
-        # Отправляем уведомление дезинсектору
-        asyncio.create_task(notify_new_order(new_order.id))
-        logger.info(f"Заявка {new_order.id} назначена дезинсектору {assigned_disinsector.name}")
-    else:
-        logger.warning("Нет доступных дезинсекторов для назначения заявки.")
-        return jsonify({'error': 'No available disinsector'}), 400
-
-    return jsonify({'message': 'Order created successfully', 'order_id': new_order.id}), 200
 
