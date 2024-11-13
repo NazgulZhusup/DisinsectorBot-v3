@@ -29,7 +29,7 @@ logger.addHandler(stream_handler)
 
 # Определение состояний FSM
 class OrderForm(StatesGroup):
-    accept = State()  # Ожидание ответа на принятие заявки
+    accept_order = State()  # Ожидание ответа на принятие заявки
     chemical_type = State()  # Выбор химиката
     area = State()  # Площадь помещения
     poison_type = State()  # Тип яда
@@ -93,18 +93,16 @@ async def start_disinsector_bot(token, disinsector_id):
 
             await state.update_data(disinsector_id=disinsector.id)
 
-            await message.answer("Добрый день! Нажмите 'Ок', чтобы принять заявку и начать опрос.",
-                                 reply_markup=inl_kb_accept_order)
-            await state.set_state(OrderForm.accept_order)
-
         except Exception as e:
             logger.error(f"Произошла ошибка при обработке команды /start: {e}")
             await message.answer("Произошла ошибка при обработке команды /start. Попробуйте позже.")
 
+        await bot.send_message(disinsector.telegram_user_id, message, reply_markup= inl_kb_accept_order)
+        logger.info(f"Уведомление отправлено дезинсектору {disinsector.name}")
 
 
     # Обработчики для работы с заявкой
-    @dp.callback_query(F.data == 'accept_order_yes', StateFilter(OrderForm.accept))
+    @dp.callback_query(F.data == 'accept_order_yes', StateFilter(OrderForm.accept_order))
     async def accept_order(callback: types.CallbackQuery, state: FSMContext):
         user_data = await state.get_data()
         disinsector_id = user_data['disinsector_id']  # Используем disinsector_id из состояния
@@ -119,8 +117,8 @@ async def start_disinsector_bot(token, disinsector_id):
             await callback.message.answer("Вы приняли заявку. Укажите тип химиката для обработки.", reply_markup=inl_kb_chemical_type)
             await state.set_state(OrderForm.chemical_type)
 
-            # Передаем заявку в общую функцию назначения и уведомления, передав объект bot
-            assign_and_notify_disinsector(bot, order)  # Передаем bot в функцию
+            # # Передаем заявку в общую функцию назначения и уведомления, передав объект bot
+            # assign_and_notify_disinsector(bot, order)  # Передаем bot в функцию
 
         else:
             await callback.answer("Ошибка, заявка не найдена.")
@@ -222,9 +220,7 @@ async def notify_new_order(bot, disinsector, order):
 
         )
 
-        # Отправляем сообщение с кнопками
-        await bot.send_message(disinsector.telegram_user_id, message, reply_markup=buttons)
-        logger.info(f"Уведомление отправлено дезинсектору {disinsector.name}")
+
 
     except Exception as e:
         logger.error(f"Ошибка при отправке уведомления дезинсектору {disinsector.name}: {e}")
